@@ -30,6 +30,8 @@ spec:
       app: web
   template:
     metadata:
+      annotations:
+        gitops.phong/redeploy: "V2"
       labels:
         app: web
     spec:
