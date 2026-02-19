@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: web-index
+  namespace: hello
+data:
+  index.html: |
+    <html>
+      <body style="font-family: sans-serif;">
+        <h1>Hei fra GitOps 👋</h1>
+        <p>Deployet via ArgoCD + Gitea SSH</p>
+        <p>Timestamp: V2</p>
+      </body>
+    </html>
