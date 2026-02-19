@@ -6,15 +6,15 @@ metadata:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: web-index
+  name: hello-index
   namespace: hello
 data:
   index.html: |
     <html>
-      <body style="font-family: sans-serif;">
+      <body style="font-family: sans-serif">
         <h1>Hei fra GitOps 👋</h1>
         <p>Deployet via ArgoCD + Gitea SSH</p>
-        <p>Timestamp: V1</p>
+        <p>Timestamp: V2</p>
       </body>
     </html>
 ---
@@ -39,13 +39,13 @@ spec:
           ports:
             - containerPort: 80
           volumeMounts:
-            - name: web-index
+            - name: webroot
               mountPath: /usr/share/nginx/html/index.html
               subPath: index.html
       volumes:
-        - name: web-index
+        - name: webroot
           configMap:
-            name: web-index
+            name: hello-index
 ---
 apiVersion: v1
 kind: Service
@@ -58,3 +58,4 @@ spec:
   ports:
     - port: 80
       targetPort: 80
+
