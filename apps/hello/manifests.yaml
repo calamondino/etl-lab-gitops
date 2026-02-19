@@ -3,6 +3,21 @@ kind: Namespace
 metadata:
   name: hello
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: web-index
+  namespace: hello
+data:
+  index.html: |
+    <html>
+      <body style="font-family: sans-serif;">
+        <h1>Hei fra GitOps 👋</h1>
+        <p>Deployet via ArgoCD + Gitea SSH</p>
+        <p>Timestamp: V1</p>
+      </body>
+    </html>
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -23,6 +38,14 @@ spec:
           image: nginx:stable
           ports:
             - containerPort: 80
+          volumeMounts:
+            - name: web-index
+              mountPath: /usr/share/nginx/html/index.html
+              subPath: index.html
+      volumes:
+        - name: web-index
+          configMap:
+            name: web-index
 ---
 apiVersion: v1
 kind: Service
