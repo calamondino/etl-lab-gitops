@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: etl
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vector-config
+  namespace: etl
+data:
+  vector.yaml: |
+    data_dir: /vector-data-dir
+
+    sources:
+      demo:
+        type: generator
+        interval: 1
+        format: json
+        lines:
+          - '{"app":"vector-demo","msg":"hei fra Vector","version":"V1"}'
+
+    sinks:
+      out:
+        type: console
+        inputs: ["demo"]
+        encoding:
+          codec: json
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vector-demo
+  namespace: etl
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vector-demo
+  template:
+    metadata:
+      labels:
+        app: vector-demo
+    spec:
+      containers:
+        - name: vector
+          image: timberio/vector:latest
+          args: ["--config", "/etc/vector/vector.yaml"]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/vector
+            - name: data
+              mountPath: /vector-data-dir
+      volumes:
+        - name: config
+          configMap:
+            name: vector-config
+        - name: data
+          emptyDir: {}
