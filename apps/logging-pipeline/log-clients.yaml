@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: linux-log-client
+  namespace: logging
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: linux-log-client
+  template:
+    metadata:
+      labels:
+        app: linux-log-client
+    spec:
+      containers:
+      - name: log-sender
+        image: ubuntu:22.04
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          apt-get update -q && apt-get install -y -q netcat-openbsd
+          TOPICS=("65021" "65022" "65023" "65024" "65025")
+          NAMES=("dhcp" "dns" "firewall" "auth" "system")
+          while true; do
+            for i in "${!TOPICS[@]}"; do
+              PORT="${TOPICS[$i]}"
+              TOPIC="${NAMES[$i]}"
+              MSG="<14>1 $(date -u +%Y-%m-%dT%H:%M:%SZ) linux-client-$(hostname) $TOPIC - - - {\"topic\":\"$TOPIC\",\"msg\":\"test log fra linux klient\",\"host\":\"$(hostname)\"}"
+              echo "$MSG" | nc -w1 nginx-lb-svc.logging.svc.cluster.local $PORT
+            done
+            sleep 10
+          done
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wec-log-client
+  namespace: logging
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wec-log-client
+  template:
+    metadata:
+      labels:
+        app: wec-log-client
+    spec:
+      containers:
+      - name: wec-sender
+        image: python:3.11-slim
+        command: ["python3", "-c"]
+        args:
+        - |
+          import socket, time, json, random, datetime, os
+
+          LB_HOST = "nginx-lb-svc.logging.svc.cluster.local"
+          TOPICS = {
+            "dhcp":     65021,
+            "dns":      65022,
+            "firewall": 65023,
+            "auth":     65024,
+            "system":   65025,
+          }
+          WIN_EVENTS = {
+            "auth":     [4624, 4625, 4634, 4648],
+            "system":   [7045, 7036, 1074],
+            "firewall": [5156, 5157, 5158],
+            "dhcp":     [1020, 1063],
+            "dns":      [3008, 3020],
+          }
+
+          hostname = "WIN-WEC-SIM-01"
+
+          while True:
+            for topic, port in TOPICS.items():
+              event_id = random.choice(WIN_EVENTS[topic])
+              ts = datetime.datetime.utcnow().isoformat() + "Z"
+              payload = json.dumps({
+                "TimeCreated": ts,
+                "EventID": event_id,
+                "Channel": topic,
+                "Computer": hostname,
+                "topic": topic,
+                "Message": f"Windows Event {event_id} from {topic}"
+              })
+              pri = 14
+              msg = f"<{pri}>1 {ts} {hostname} WEC - {event_id} - {payload}\n"
+              try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                  s.settimeout(5)
+                  s.connect((LB_HOST, port))
+                  s.sendall(msg.encode())
+              except Exception as e:
+                print(f"[{topic}:{port}] feil: {e}")
+              time.sleep(3)

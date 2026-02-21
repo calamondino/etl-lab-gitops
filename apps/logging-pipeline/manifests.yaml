@@ -1,0 +1,158 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rsyslog-config
+  namespace: logging
+data:
+  rsyslog.conf: |
+    global(workDirectory="/var/lib/rsyslog")
+    module(load="imudp")
+    module(load="imtcp")
+
+    # rsyslog topics: dhcp/dns/firewall
+    input(type="imudp" port="65021" ruleset="dhcp")
+    input(type="imtcp" port="65021" ruleset="dhcp")
+    input(type="imudp" port="65022" ruleset="dns")
+    input(type="imtcp" port="65022" ruleset="dns")
+    input(type="imudp" port="65023" ruleset="firewall")
+    input(type="imtcp" port="65023" ruleset="firewall")
+
+    template(name="json_log" type="list") {
+      constant(value="{")
+      property(name="timereported" outname="timestamp" dateFormat="rfc3339" format="jsonf")
+      constant(value=",")
+      property(name="hostname" format="jsonf")
+      constant(value=",")
+      property(name="syslogtag" format="jsonf")
+      constant(value=",")
+      property(name="msg" format="jsonf")
+      constant(value="}\n")
+    }
+
+    ruleset(name="dhcp") {
+      action(type="omfile" file="/var/log/rsyslog/dhcp.log" template="json_log")
+    }
+    ruleset(name="dns") {
+      action(type="omfile" file="/var/log/rsyslog/dns.log" template="json_log")
+    }
+    ruleset(name="firewall") {
+      action(type="omfile" file="/var/log/rsyslog/firewall.log" template="json_log")
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vector-config
+  namespace: logging
+data:
+  vector.yaml: |
+    data_dir: /vector-data-dir
+
+    sources:
+      auth_in:
+        type: syslog
+        address: "0.0.0.0:65024"
+        mode: tcp
+      system_in:
+        type: syslog
+        address: "0.0.0.0:65025"
+        mode: tcp
+
+    transforms:
+      add_metadata:
+        type: remap
+        inputs: ["auth_in", "system_in"]
+        source: |
+          .environment = "etl-lab"
+          .topic = .source_type
+
+    sinks:
+      loki_out:
+        type: loki
+        inputs: ["add_metadata"]
+        endpoint: "http://loki.logging.svc.cluster.local:3100"
+        labels:
+          topic: "{{ topic }}"
+          environment: "etl-lab"
+        encoding:
+          codec: json
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rsyslog-vector
+  namespace: logging
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: rsyslog-vector
+  template:
+    metadata:
+      labels:
+        app: rsyslog-vector
+    spec:
+      containers:
+      - name: rsyslog
+        image: registry.access.redhat.com/ubi9/ubi:latest
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          dnf install -y rsyslog && \
+          mkdir -p /var/log/rsyslog && \
+          cp /etc/rsyslog-config/rsyslog.conf /etc/rsyslog.conf && \
+          rsyslogd -n
+        volumeMounts:
+        - name: rsyslog-config
+          mountPath: /etc/rsyslog-config
+        ports:
+        - containerPort: 65021
+        - containerPort: 65022
+        - containerPort: 65023
+
+      - name: vector
+        image: timberio/vector:0.53.0-distroless-libc
+        args: ["--config", "/etc/vector/vector.yaml"]
+        volumeMounts:
+        - name: vector-config
+          mountPath: /etc/vector
+        - name: vector-data
+          mountPath: /vector-data-dir
+        ports:
+        - containerPort: 65024
+        - containerPort: 65025
+
+      volumes:
+      - name: rsyslog-config
+        configMap:
+          name: rsyslog-config
+      - name: vector-config
+        configMap:
+          name: vector-config
+      - name: vector-data
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rsyslog-vector-svc
+  namespace: logging
+spec:
+  selector:
+    app: rsyslog-vector
+  ports:
+  - name: dhcp-udp
+    port: 65021
+    protocol: UDP
+  - name: dns-tcp
+    port: 65022
+    protocol: TCP
+  - name: firewall-tcp
+    port: 65023
+    protocol: TCP
+  - name: auth-tcp
+    port: 65024
+    protocol: TCP
+  - name: system-tcp
+    port: 65025
+    protocol: TCP
