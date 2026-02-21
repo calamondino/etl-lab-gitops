@@ -15,11 +15,11 @@ spec:
     spec:
       containers:
       - name: log-sender
-        image: ubuntu:22.04
-        command: ["/bin/bash", "-c"]
+        image: alpine:latest
+        command: ["/bin/sh", "-c"]
         args:
         - |
-          apt-get update -q && apt-get install -y -q netcat-openbsd
+          apk add --no-cache netcat-openbsd
           TOPICS=("65021" "65022" "65023" "65024" "65025")
           NAMES=("dhcp" "dns" "firewall" "auth" "system")
           while true; do
