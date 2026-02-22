@@ -174,7 +174,7 @@ metadata:
   name: rsyslog-vector
   namespace: logging
 spec:
-  replicas: 5 # demo endring
+  replicas: 5
   selector:
     matchLabels:
       app: rsyslog-vector
