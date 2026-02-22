@@ -16,12 +16,12 @@ STATUS_FILE="/var/run/etl-agent-status.json"
 
 mkdir -p "$WORK_DIR" "$RSYSLOG_CONF_DIR" "$(dirname $STATUS_FILE)"
 
-log() { echo "[etl-agent $(hostname)] $1"; }
+log() { echo "[etl-agent $HOSTNAME] $1"; }
 
 update_status() {
   cat > "$STATUS_FILE" << JSON
 {
-  "hostname": "$(hostname)",
+  "hostname": "$HOSTNAME",
   "deployed_version": "${1:-ukjent}",
   "last_refresh": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "last_sync": "${2:-aldri}",
