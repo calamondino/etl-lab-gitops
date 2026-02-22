@@ -43,7 +43,6 @@ data:
 
     module(load="imptcp" Threads="2" ProcessOnPoller="off")
     module(load="mmutf8fix")
-    module(load="mmrm1stspace")
 
     input(name="imptcp65021" type="imptcp" port="65021" RateLimit.Burst="0" flowControl="off" ruleset="dhcp")
     input(name="imptcp65022" type="imptcp" port="65022" RateLimit.Burst="0" flowControl="off" ruleset="dns")
@@ -53,7 +52,6 @@ data:
       if ($rawmsg == "tcpsoc#015" or $programname == "tcpsoc") then { stop }
       set $!etl = "dhcp";
       action(type="mmutf8fix")
-      action(type="mmrm1stspace")
       action(type="omfile" file="/data/rsyslog/dhcp.log" template="event_hubs_structured_json_full")
     }
 
@@ -61,7 +59,6 @@ data:
       if ($rawmsg == "tcpsoc#015" or $programname == "tcpsoc") then { stop }
       set $!etl = "dns";
       action(type="mmutf8fix")
-      action(type="mmrm1stspace")
       action(type="omfile" file="/data/rsyslog/dns.log" template="event_hubs_structured_json_full")
     }
 
@@ -69,7 +66,6 @@ data:
       if ($rawmsg == "tcpsoc#015" or $programname == "tcpsoc") then { stop }
       set $!etl = "firewall";
       action(type="mmutf8fix")
-      action(type="mmrm1stspace")
       action(type="omfile" file="/data/rsyslog/firewall.log" template="event_hubs_structured_json_full")
     }
 ---
