@@ -16,17 +16,7 @@ spec:
       containers:
       - name: log-sender
         image: alpine:latest
-        command: ["/bin/sh", "-c"]
-        args:
-        - |
-          apk add --no-cache netcat-openbsd
-          while true; do
-            for PORT in 65021 65022 65023 65024 65025; do
-              MSG="<14>1 $(date -u +%Y-%m-%dT%H:%M:%SZ) linux-client-$(hostname) topic-$PORT - - - test log fra linux klient port $PORT"
-              echo "$MSG" | nc -w1 nginx-lb-svc.logging.svc.cluster.local $PORT
-            done
-            sleep 10
-          done
+        command: ["/bin/sh", "-c", "apk add --no-cache netcat-openbsd && while true; do for PORT in 65021 65022 65023 65024 65025; do echo \"<14>test log port $PORT\" | nc -w1 nginx-lb-svc.logging.svc.cluster.local $PORT; done; sleep 10; done"]
 ---
 apiVersion: apps/v1
 kind: Deployment
