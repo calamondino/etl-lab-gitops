@@ -251,4 +251,4 @@ spec:
     protocol: TCP
   - name: vector-tcp
     port: 60080
-    protocol: TCP# demo endring Sun Feb 22 17:37:30 CET 2026
+    protocol: TCP
