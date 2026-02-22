@@ -35,7 +35,7 @@ data:
     global(
       workDirectory="/data/rsyslog"
       net.ipprotocol="ipv4-only"
-      maxMessageSize="64k"
+      maxMessageSize="128k"
       parser.escapeControlCharactersOnReceive="off"
     )
 
