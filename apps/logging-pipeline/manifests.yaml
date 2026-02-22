@@ -1,3 +1,29 @@
+kind: ConfigMap
+metadata:
+  name: rsyslog-templates
+  namespace: logging
+data:
+  rsyslog_etl_templates.conf: |
+    template(name="event_hubs_structured_json_full" type="list" option.jsonf="on") {
+      property(outname="msg"                  name="msg"                  format="jsonf")
+      property(outname="timereported"         name="timereported"         dateFormat="rfc3339"  format="jsonf")
+      property(outname="hostname"             name="hostname"             format="jsonf")
+      property(outname="syslogtag"            name="syslogtag"            format="jsonf")
+      property(outname="inputname"            name="inputname"            format="jsonf")
+      property(outname="fromhost"             name="fromhost"             format="jsonf")
+      property(outname="fromhost-ip"          name="fromhost-ip"          format="jsonf")
+      property(outname="pri"                  name="pri"                  datatype="number"     format="jsonf")
+      property(outname="syslogfacility"       name="syslogfacility"       datatype="number"     format="jsonf")
+      property(outname="syslogseverity"       name="syslogseverity"       datatype="number"     format="jsonf")
+      property(outname="timegenerated"        name="timegenerated"        dateFormat="rfc3339"  format="jsonf")
+      property(outname="programname"          name="programname"          format="jsonf")
+      property(outname="syslogfacility-text"  name="syslogfacility-text"  format="jsonf")
+      property(outname="syslogseverity-text"  name="syslogseverity-text"  format="jsonf")
+      property(outname="syslogpriority-text"  name="syslogpriority-text"  format="jsonf")
+      property(outname="_etlhost"             name="$myhostname"          format="jsonf")
+      property(outname="$!"                   name="$!"                   format="jsonf")
+    }
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -5,38 +31,45 @@ metadata:
   namespace: logging
 data:
   rsyslog.conf: |
-    global(workDirectory="/var/lib/rsyslog")
-    module(load="imudp")
-    module(load="imtcp")
+    global(
+      workDirectory="/data/rsyslog"
+      net.ipprotocol="ipv4-only"
+      maxMessageSize="64k"
+      parser.escapeControlCharactersOnReceive="off"
+    )
 
-    # rsyslog topics: dhcp/dns/firewall
-    input(type="imudp" port="65021" ruleset="dhcp")
-    input(type="imtcp" port="65021" ruleset="dhcp")
-    input(type="imudp" port="65022" ruleset="dns")
-    input(type="imtcp" port="65022" ruleset="dns")
-    input(type="imudp" port="65023" ruleset="firewall")
-    input(type="imtcp" port="65023" ruleset="firewall")
+    include(file="/etc/rsyslog-templates/rsyslog_etl_templates.conf" mode="abort-if-missing")
 
-    template(name="json_log" type="list") {
-      constant(value="{")
-      property(name="timereported" outname="timestamp" dateFormat="rfc3339" format="jsonf")
-      constant(value=",")
-      property(name="hostname" format="jsonf")
-      constant(value=",")
-      property(name="syslogtag" format="jsonf")
-      constant(value=",")
-      property(name="msg" format="jsonf")
-      constant(value="}\n")
-    }
+    module(load="imptcp" Threads="2" ProcessOnPoller="off")
+    module(load="mmutf8fix")
+    module(load="mmrm1stspace")
+
+    input(name="imptcp65021" type="imptcp" port="65021" RateLimit.Burst="0" flowControl="off" ruleset="dhcp")
+    input(name="imptcp65022" type="imptcp" port="65022" RateLimit.Burst="0" flowControl="off" ruleset="dns")
+    input(name="imptcp65023" type="imptcp" port="65023" RateLimit.Burst="0" flowControl="off" ruleset="firewall")
 
     ruleset(name="dhcp") {
-      action(type="omfile" file="/var/log/rsyslog/dhcp.log" template="json_log")
+      if ($rawmsg == "tcpsoc#015" or $programname == "tcpsoc") then { stop }
+      set $!etl = "dhcp";
+      action(type="mmutf8fix")
+      action(type="mmrm1stspace")
+      action(type="omfile" file="/data/rsyslog/dhcp.log" template="event_hubs_structured_json_full")
     }
+
     ruleset(name="dns") {
-      action(type="omfile" file="/var/log/rsyslog/dns.log" template="json_log")
+      if ($rawmsg == "tcpsoc#015" or $programname == "tcpsoc") then { stop }
+      set $!etl = "dns";
+      action(type="mmutf8fix")
+      action(type="mmrm1stspace")
+      action(type="omfile" file="/data/rsyslog/dns.log" template="event_hubs_structured_json_full")
     }
+
     ruleset(name="firewall") {
-      action(type="omfile" file="/var/log/rsyslog/firewall.log" template="json_log")
+      if ($rawmsg == "tcpsoc#015" or $programname == "tcpsoc") then { stop }
+      set $!etl = "firewall";
+      action(type="mmutf8fix")
+      action(type="mmrm1stspace")
+      action(type="omfile" file="/data/rsyslog/firewall.log" template="event_hubs_structured_json_full")
     }
 ---
 apiVersion: v1
@@ -46,34 +79,63 @@ metadata:
   namespace: logging
 data:
   vector.yaml: |
-    data_dir: /vector-data-dir
+    api:
+      enabled: true
+
+    data_dir: /data/vector
 
     sources:
-      auth_in:
-        type: syslog
-        address: "0.0.0.0:65024"
-        mode: tcp
-      system_in:
-        type: syslog
-        address: "0.0.0.0:65025"
+      listen_socket:
+        type: socket
+        address: "0.0.0.0:60080"
         mode: tcp
 
+      vector_internal_logs:
+        type: internal_logs
+
     transforms:
-      add_metadata:
+      listen_socket_filter:
+        type: filter
+        inputs:
+          - listen_socket
+        condition: '.message != "tcpsoc\\r"'
+
+      parse_and_route:
         type: remap
-        inputs: ["auth_in", "system_in"]
+        inputs:
+          - listen_socket_filter
         source: |
-          .environment = "etl-lab"
-          .topic = .source_type
+          parsed, err = parse_json(.message)
+          if err == null {
+            . = merge!(., parsed)
+          }
+          ._meta._topic = "vector-event"
+          xml, xml_err = parse_xml(string!(.message), parse_bool: false, parse_null: false, parse_number: false)
+          if xml_err == null {
+            if xml.Event.System.Channel == "Security" {
+              ._meta._topic = "vector-securityevent"
+            }
+          } else if is_string(.message) && contains(string!(.message), "<Channel>Security</Channel>") {
+            ._meta._topic = "vector-securityevent"
+          }
 
     sinks:
       loki_out:
         type: loki
-        inputs: ["add_metadata"]
+        inputs:
+          - parse_and_route
         endpoint: "http://loki.logging.svc.cluster.local:3100"
         labels:
-          topic: "{{ topic }}"
+          topic: "{{ _meta._topic }}"
           environment: "etl-lab"
+        encoding:
+          codec: json
+
+      failed_events:
+        type: file
+        inputs:
+          - listen_socket_filter
+        path: "/data/vector/failed_events.log"
         encoding:
           codec: json
 ---
@@ -98,13 +160,17 @@ spec:
         command: ["/bin/bash", "-c"]
         args:
         - |
-          dnf install -y rsyslog && \
-          mkdir -p /var/log/rsyslog && \
-          cp /etc/rsyslog-config/rsyslog.conf /etc/rsyslog.conf && \
+          dnf install -y rsyslog rsyslog-mmutf8fix &&
+          mkdir -p /data/rsyslog &&
+          cp /etc/rsyslog-config/rsyslog.conf /etc/rsyslog.conf &&
           rsyslogd -n
         volumeMounts:
         - name: rsyslog-config
           mountPath: /etc/rsyslog-config
+        - name: rsyslog-templates
+          mountPath: /etc/rsyslog-templates
+        - name: rsyslog-data
+          mountPath: /data/rsyslog
         ports:
         - containerPort: 65021
         - containerPort: 65022
@@ -117,15 +183,19 @@ spec:
         - name: vector-config
           mountPath: /etc/vector
         - name: vector-data
-          mountPath: /vector-data-dir
+          mountPath: /data/vector
         ports:
-        - containerPort: 65024
-        - containerPort: 65025
+        - containerPort: 60080
 
       volumes:
       - name: rsyslog-config
         configMap:
           name: rsyslog-config
+      - name: rsyslog-templates
+        configMap:
+          name: rsyslog-templates
+      - name: rsyslog-data
+        emptyDir: {}
       - name: vector-config
         configMap:
           name: vector-config
@@ -141,18 +211,15 @@ spec:
   selector:
     app: rsyslog-vector
   ports:
-  - name: dhcp-udp
+  - name: dhcp-tcp
     port: 65021
-    protocol: UDP
+    protocol: TCP
   - name: dns-tcp
     port: 65022
     protocol: TCP
   - name: firewall-tcp
     port: 65023
     protocol: TCP
-  - name: auth-tcp
-    port: 65024
-    protocol: TCP
-  - name: system-tcp
-    port: 65025
+  - name: vector-tcp
+    port: 60080
     protocol: TCP
