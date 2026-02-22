@@ -90,6 +90,24 @@ data:
       vector_internal_logs:
         type: internal_logs
 
+      rsyslog_dhcp:
+        type: file
+        include:
+          - /data/rsyslog/dhcp.log
+        read_from: beginning
+
+      rsyslog_dns:
+        type: file
+        include:
+          - /data/rsyslog/dns.log
+        read_from: beginning
+
+      rsyslog_firewall:
+        type: file
+        include:
+          - /data/rsyslog/firewall.log
+        read_from: beginning
+
     transforms:
       listen_socket_filter:
         type: filter
@@ -125,6 +143,20 @@ data:
         labels:
           topic: "{{ _meta._topic }}"
           environment: "etl-lab"
+        encoding:
+          codec: json
+
+      loki_rsyslog:
+        type: loki
+        inputs:
+          - rsyslog_dhcp
+          - rsyslog_dns
+          - rsyslog_firewall
+        endpoint: "http://loki.logging.svc.cluster.local:3100"
+        labels:
+          topic: "{{ source_type }}"
+          environment: "etl-lab"
+          pipeline: "rsyslog"
         encoding:
           codec: json
 
@@ -219,4 +251,4 @@ spec:
     protocol: TCP
   - name: vector-tcp
     port: 60080
-    protocol: TCP
+    protocol: TCP# demo endring Sun Feb 22 17:37:30 CET 2026
