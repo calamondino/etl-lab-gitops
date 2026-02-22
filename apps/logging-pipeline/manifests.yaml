@@ -161,7 +161,7 @@ spec:
         command: ["/bin/bash", "-c"]
         args:
         - |
-          dnf install -y rsyslog rsyslog-mmutf8fix &&
+          dnf install -y rsyslog &&
           mkdir -p /data/rsyslog &&
           cp /etc/rsyslog-config/rsyslog.conf /etc/rsyslog.conf &&
           rsyslogd -n
