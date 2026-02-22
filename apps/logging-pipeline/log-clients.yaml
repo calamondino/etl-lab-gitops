@@ -4,7 +4,7 @@ metadata:
   name: linux-log-client
   namespace: logging
 spec:
-  replicas: 2
+  replicas: 3
   selector:
     matchLabels:
       app: linux-log-client
